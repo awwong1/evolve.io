@@ -1,11 +1,12 @@
 class Creature extends SoftBody{
-  double ACCELERATION_ENERGY = 0.03;
-  double ACCELERATION_BACK_ENERGY = 0.05;
+  double ACCELERATION_ENERGY = 0.18;
+  double ACCELERATION_BACK_ENERGY = 0.24;
   double SWIM_ENERGY = 0.008;
-  double TURN_ENERGY = 0.01;
-  double EAT_ENERGY = 0.04;
-  double EAT_SPEED = 0.9; // 1 is instant, 0 is nonexistent, 0.001 is verrry slow.
-  double FIGHT_ENERGY = 0.03;
+  double TURN_ENERGY = 0.05;
+  double EAT_ENERGY = 0.05;
+  double EAT_SPEED = 0.5; // 1 is instant, 0 is nonexistent, 0.001 is verrry slow.
+  double EAT_WHILE_MOVING_INEFFICIENCY_MULTIPLIER = 2.0; // The bigger this number is, the less effiently creatures eat when they're moving.
+  double FIGHT_ENERGY = 0.06;
   double INJURED_ENERGY = 0.25;
   double METABOLISM_ENERGY = 0.004;
   String name;
@@ -24,7 +25,7 @@ class Creature extends SoftBody{
   double vr = 0;
   double rotation = 0;
   final int BRAIN_WIDTH = 3;
-  final int BRAIN_HEIGHT = 12;
+  final int BRAIN_HEIGHT = 13;
   final double AXON_START_MUTABILITY = 0.0005;
   final int MIN_NAME_LENGTH = 3;
   final int MAX_NAME_LENGTH = 10;
@@ -34,7 +35,7 @@ class Creature extends SoftBody{
   
   float preferredRank = 8;
   double[] visionAngles = {0,-0.4,0.4};
-  double[] visionDistances = {0,1.42,1.42};
+  double[] visionDistances = {0,0.7,0.7};
   //double visionAngle;
   //double visionDistance;
   double[] visionOccludedX = new double[visionAngles.length];
@@ -43,9 +44,10 @@ class Creature extends SoftBody{
   int MEMORY_COUNT = 1;
   double[] memories;
   
-  float CROSS_SIZE = 0.05;
+  float CROSS_SIZE = 0.022;
   
   double mouthHue;
+  CreatureThread thread;
   
   public Creature(double tpx, double tpy, double tvx, double tvy, double tenergy,
   double tdensity, double thue, double tsaturation, double tbrightness, Board tb, double bt,
@@ -121,9 +123,9 @@ class Creature extends SoftBody{
     textFont(font,0.58*scaleUp);
     fill(0,0,1);
     String[] inputLabels = {"0Hue","0Sat","0Bri","1Hue",
-    "1Sat","1Bri","2Hue","2Sat","2Bri","Size","Mem","Const."};
-    String[] outputLabels = {"BHue","MHue","Accel.","Turn","Eat","Fight","Birth","How funny?",
-    "How popular?","How generous?","Mem","Const."};
+    "1Sat","1Bri","2Hue","2Sat","2Bri","Size","MHue","Mem","Const."};
+    String[] outputLabels = {"BHue","Accel.","Turn","Eat","Fight","Birth","How funny?",
+    "How popular?","How generous?","How smart?","MHue","Mem","Const."};
     for(int y = 0; y < BRAIN_HEIGHT; y++){
       textAlign(RIGHT);
       text(inputLabels[y],(-neuronSize-0.1)*scaleUp,(y+(neuronSize*0.6))*scaleUp);
@@ -162,8 +164,9 @@ class Creature extends SoftBody{
       neurons[0][i] = visionResults[i];
     }
     neurons[0][9] = energy;
+    neurons[0][10] = mouthHue;
     for(int i = 0; i < MEMORY_COUNT; i++){
-      neurons[0][10+i] = memories[i];
+      neurons[0][11+i] = memories[i];
     }
     for(int x = 1; x < BRAIN_WIDTH; x++){
       for(int y = 0; y < BRAIN_HEIGHT-1; y++){
@@ -181,16 +184,16 @@ class Creature extends SoftBody{
     if(useOutput){
       int end = BRAIN_WIDTH-1;
       hue = Math.min(Math.max(neurons[end][0],0),1);
-      mouthHue = Math.min(Math.max(neurons[end][1],0),1);
-      accelerate(neurons[end][2],timeStep);
-      turn(neurons[end][3],timeStep);
-      eat(neurons[end][4],timeStep);
-      fight(neurons[end][5],timeStep);
-      if(neurons[end][6] > 0 && board.year-birthTime >= MATURE_AGE && energy > SAFE_SIZE){
+      accelerate(neurons[end][1],timeStep);
+      turn(neurons[end][2],timeStep);
+      eat(neurons[end][3],timeStep);
+      fight(neurons[end][4],timeStep);
+      if(neurons[end][5] > 0 && board.year-birthTime >= MATURE_AGE && energy > SAFE_SIZE){
         reproduce(SAFE_SIZE, timeStep);
       }
+      mouthHue = Math.min(Math.max(neurons[end][10],0),1);
       for(int i = 0; i < MEMORY_COUNT; i++){
-        memories[i] = neurons[end][10+i];
+        memories[i] = neurons[end][11+i];
       }
     }
   }
@@ -221,7 +224,7 @@ class Creature extends SoftBody{
           visionUIcolor = color(0,0,0);
         }
         stroke(visionUIcolor);
-        strokeWeight(2);
+        strokeWeight(board.CREATURE_STROKE_WEIGHT);
         float endX = (float)getVisionEndX(i);
         float endY = (float)getVisionEndY(i);
         line((float)(px*scaleUp),(float)(py*scaleUp),endX*scaleUp,endY*scaleUp);
@@ -230,7 +233,7 @@ class Creature extends SoftBody{
         ellipse((float)(visionOccludedX[i]*scaleUp),(float)(visionOccludedY[i]*scaleUp),
         2*CROSS_SIZE*scaleUp,2*CROSS_SIZE*scaleUp);
         stroke((float)(visionResults[i*3]),(float)(visionResults[i*3+1]),(float)(visionResults[i*3+2]));
-        strokeWeight(2);
+        strokeWeight(board.CREATURE_STROKE_WEIGHT);
         line((float)((visionOccludedX[i]-CROSS_SIZE)*scaleUp),(float)((visionOccludedY[i]-CROSS_SIZE)*scaleUp),
         (float)((visionOccludedX[i]+CROSS_SIZE)*scaleUp),(float)((visionOccludedY[i]+CROSS_SIZE)*scaleUp));
         line((float)((visionOccludedX[i]-CROSS_SIZE)*scaleUp),(float)((visionOccludedY[i]+CROSS_SIZE)*scaleUp),
@@ -242,7 +245,7 @@ class Creature extends SoftBody{
       fill(0,1,1,(float)(fightLevel*0.8));
       ellipse((float)(px*scaleUp),(float)(py*scaleUp),(float)(FIGHT_RANGE*radius*scaleUp),(float)(FIGHT_RANGE*radius*scaleUp));
     }
-    strokeWeight(2);
+    strokeWeight(board.CREATURE_STROKE_WEIGHT);
     stroke(0,0,1);
     fill(0,0,1);
     if(this == board.selectedCreature){
@@ -251,7 +254,7 @@ class Creature extends SoftBody{
     }
     super.drawSoftBody(scaleUp);
     noFill();
-    strokeWeight(2);
+    strokeWeight(board.CREATURE_STROKE_WEIGHT);
     stroke(0,0,1);
     ellipseMode(RADIUS);
     ellipse((float)(px*scaleUp),(float)(py*scaleUp),
@@ -260,7 +263,7 @@ class Creature extends SoftBody{
     translate((float)(px*scaleUp),(float)(py*scaleUp));
     scale((float)radius);
     rotate((float)rotation);
-    strokeWeight((float)(2.0/radius));
+    strokeWeight((float)(board.CREATURE_STROKE_WEIGHT/radius));
     stroke(0,0,0);
     fill((float)mouthHue,1.0,1.0);
     ellipse(0.6*scaleUp,0,0.37*scaleUp,0.37*scaleUp);
@@ -273,10 +276,17 @@ class Creature extends SoftBody{
     popMatrix();
     if(showVision){
       fill(0,0,1);
-      textFont(font,0.3*scaleUp);
+      textFont(font,0.2*scaleUp);
       textAlign(CENTER);
-      text(getCreatureName(),(float)(px*scaleUp),(float)((py-getRadius()*1.4)*scaleUp));
+      text(getCreatureName(),(float)(px*scaleUp),(float)((py-getRadius()*1.4-0.07)*scaleUp));
     }
+  }
+  public void doThread(double timeStep, Boolean userControl){ // just kidding, multithreading doesn't really help here.
+    //collide(timeStep);
+    //metabolize(timeStep);
+    //useBrain(timeStep, !userControl);
+    thread = new CreatureThread("Thread "+id, this, timeStep, userControl);
+    thread.start();
   }
   public void metabolize(double timeStep){
     loseEnergy(energy*METABOLISM_ENERGY*timeStep);
@@ -308,7 +318,7 @@ class Creature extends SoftBody{
     return board.tiles[x][y];
   }
   public void eat(double attemptedAmount, double timeStep){
-    double amount = attemptedAmount/(1.0+distance(0,0,vx,vy)); // The faster you're moving, the less efficiently you can eat.
+    double amount = attemptedAmount/(1.0+distance(0,0,vx,vy)*EAT_WHILE_MOVING_INEFFICIENCY_MULTIPLIER); // The faster you're moving, the less efficiently you can eat.
     if(amount < 0){
       dropEnergy(-amount*timeStep);
       loseEnergy(-attemptedAmount*EAT_ENERGY*timeStep);
@@ -318,7 +328,7 @@ class Creature extends SoftBody{
       if(foodToEat > coveredTile.foodLevel){
         foodToEat = coveredTile.foodLevel;
       }
-      coveredTile.foodLevel -= foodToEat;
+      coveredTile.removeFood(foodToEat, true);
       double foodDistance = Math.abs(coveredTile.foodType-mouthHue);
       double multiplier = 1.0-foodDistance/FOOD_SENSITIVITY;
       if(multiplier >= 0){
@@ -356,7 +366,7 @@ class Creature extends SoftBody{
     if(energyLost > 0){
       energyLost = Math.min(energyLost, energy);
       energy -= energyLost;
-      getRandomCoveredTile().addFood(energyLost,hue);
+      getRandomCoveredTile().addFood(energyLost,hue,true);
     }
   }
   public void see(double timeStep){
@@ -444,7 +454,7 @@ class Creature extends SoftBody{
     int pieces = 20;
     double radius = (float)getRadius();
     for(int i = 0; i < pieces; i++){
-      getRandomCoveredTile().addFood(energy/pieces,hue);
+      getRandomCoveredTile().addFood(energy/pieces,hue,true);
     }
     for(int x = SBIPMinX; x <= SBIPMaxX; x++){
       for(int y = SBIPMinY; y <= SBIPMaxY; y++){
@@ -638,7 +648,7 @@ class Creature extends SoftBody{
     }
     super.applyMotions(timeStep);
     rotation += vr;
-    vr *= (1-FRICTION/getMass());
+    vr *= Math.max(0,1-FRICTION/getMass());
   }
   public double getEnergyUsage(double timeStep){
     return (energy-previousEnergy[ENERGY_HISTORY_LENGTH-1])/ENERGY_HISTORY_LENGTH/timeStep;

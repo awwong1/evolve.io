@@ -1,5 +1,5 @@
 Board evoBoard;
-final int SEED = 48;
+final int SEED = 51;
 final float NOISE_STEP_SIZE = 0.1;
 final int BOARD_WIDTH = 100;
 final int BOARD_HEIGHT = 100;
@@ -25,7 +25,7 @@ int dragging = 0; // 0 = no drag, 1 = drag screen, 2 and 3 are dragging temp ext
 float prevMouseX;
 float prevMouseY;
 boolean draggedFar = false;
-final String INITIAL_FILE_NAME = "DEFAULT";
+final String INITIAL_FILE_NAME = "PIC";
 void setup() {
   colorMode(HSB,1.0);
   font = loadFont("Jygquip1-48.vlw");
@@ -92,7 +92,7 @@ void mousePressed() {
     if (abs(mouseX-(WINDOW_HEIGHT+65)) <= 60 && abs(mouseY-147) <= 60 && evoBoard.selectedCreature != null) {
         cameraX = (float)evoBoard.selectedCreature.px;
         cameraY = (float)evoBoard.selectedCreature.py;
-        zoom = 4;
+        zoom = 16;
     } else if (mouseY >= 95 && mouseY < 135 && evoBoard.selectedCreature == null) {
       if (mouseX >= WINDOW_HEIGHT+10 && mouseX < WINDOW_HEIGHT+230) {
         resetZoom();
@@ -159,7 +159,7 @@ void mousePressed() {
         evoBoard.selectedCreature = evoBoard.list[listIndex];
         cameraX = (float)evoBoard.selectedCreature.px;
         cameraY = (float)evoBoard.selectedCreature.py;
-        zoom = 4;
+        zoom = 16;
       }
     }
     if (mouseX >= width-50) {
@@ -192,6 +192,7 @@ void mouseReleased() {
             float distance = dist(mX, mY, (float)body.px, (float)body.py);
             if (distance <= body.getRadius()) {
               evoBoard.selectedCreature = (Creature)body;
+              zoom = 16;
             }
           }
         }

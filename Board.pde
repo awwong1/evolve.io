@@ -19,7 +19,8 @@ class Board{
   final float OBJECT_TIMESTEPS_PER_YEAR = 100;
   final color ROCK_COLOR = color(0,0,0.5);
   final color BACKGROUND_COLOR = color(0,0,0.1);
-  final float MINIMUM_SURVIVABLE_SIZE = 0.2;
+  final float MINIMUM_SURVIVABLE_SIZE = 0.06;
+  final float CREATURE_STROKE_WEIGHT = 0.6;
   ArrayList[][] softBodiesInPositions;
   ArrayList<SoftBody> rocks;
   ArrayList<Creature> creatures;
@@ -39,7 +40,7 @@ class Board{
   double textSaveInterval = 1;
   final double FLASH_SPEED = 80;
   boolean userControl;
-  float temperature;
+  double temperature;
   double MANUAL_BIRTH_SIZE = 1.2;
   boolean wasPressingB = false;
   double timeStep; 
@@ -47,6 +48,7 @@ class Board{
   int[] populationHistory;
   double recordPopulationEvery = 0.02;
   int playSpeed = 1;
+  public int threadsToFinish = 0;
  
   public Board(int w, int h, float stepSize, float min, float max, int rta, int cm, int SEED, String INITIAL_FILE_NAME, double ts){
     noiseSeed(SEED);
@@ -58,9 +60,9 @@ class Board{
       for(int y = 0; y < boardHeight; y++){
         float bigForce = pow(((float)y)/boardHeight,0.5);
         float fertility = noise(x*stepSize*3,y*stepSize*3)*(1-bigForce)*5.0+noise(x*stepSize*0.5,y*stepSize*0.5)*bigForce*5.0-1.5;
-        float climateType = noise(x*stepSize+10000,y*stepSize+10000)*1.63-0.4;
+        float climateType = noise(x*stepSize*0.2+10000,y*stepSize*0.2+10000)*1.63-0.4;
         climateType = min(max(climateType,0),0.8);
-        tiles[x][y] = new Tile(x,y,fertility,0,climateType);
+        tiles[x][y] = new Tile(x,y,fertility,0,climateType,this);
       }
     }
     MIN_TEMPERATURE = min;
@@ -172,7 +174,7 @@ class Board{
         if(list[i] != null){
           list[i].preferredRank += (i-list[i].preferredRank)*0.4;
           float y = y1+175+70*list[i].preferredRank;
-          drawCreature(list[i],45,y+5,0.7,scaleUp);
+          drawCreature(list[i],45,y+5,2.3,scaleUp);
           textFont(font, 24);
           textAlign(LEFT);
           noStroke();
@@ -236,7 +238,7 @@ class Board{
       }else{
         fill(0.33,1,0.4);
       }
-      float EUbar = 6*energyUsage;
+      float EUbar = 20*energyUsage;
       rect(110,280,min(max(EUbar,-110),110),25);
       if(EUbar < -110){
         rect(0,280,25,(-110-EUbar)*20+25);
@@ -266,9 +268,9 @@ class Board{
       }
       pushMatrix();
       translate(400,80);
-      float apX = round((mouseX-264-x1)/26.0);
-      float apY = round((mouseY-80-y1)/26.0);
-      selectedCreature.drawBrain(font,52,(int)apX,(int)apY);
+      float apX = round((mouseX-400-x1)/46.0);
+      float apY = round((mouseY-80-y1)/46.0);
+      selectedCreature.drawBrain(font,46,(int)apX,(int)apY);
       popMatrix();
     }
     drawPopulationGraph(x1,x2,y1,y2);
@@ -287,7 +289,7 @@ class Board{
     popMatrix();
     
     if(selectedCreature != null){
-      drawCreature(selectedCreature,x1+65,y1+147,0.7,scaleUp);
+      drawCreature(selectedCreature,x1+65,y1+147,2.3,scaleUp);
     }
   }
   void drawPopulationGraph(float x1, float x2, float y1, float y2){
@@ -322,50 +324,52 @@ class Board{
       }
       populationHistory[0] = creatures.size();
     }
-    temperature = getGrowableTime();
-    for(int x = 0; x < boardWidth; x++){
-      for(int y = 0; y < boardHeight; y++){
-        tiles[x][y].iterate(timeStep,getGrowableTime());
+    temperature = getGrowthRate(getSeason());
+    double tempChangeIntoThisFrame = temperature-getGrowthRate(getSeason()-timeStep);
+    double tempChangeOutOfThisFrame = getGrowthRate(getSeason()+timeStep)-temperature;
+    if(tempChangeIntoThisFrame*tempChangeOutOfThisFrame <= 0){ // Temperature change flipped direction.
+      for(int x = 0; x < boardWidth; x++){
+        for(int y = 0; y < boardHeight; y++){
+          tiles[x][y].iterate();
+        }
       }
     }
+    /*for(int x = 0; x < boardWidth; x++){
+      for(int y = 0; y < boardHeight; y++){
+        tiles[x][y].iterate(this, year);
+      }
+    }*/
     for(int i = 0; i < creatures.size(); i++){
       creatures.get(i).setPreviousEnergy();
     }
-    for(int i = 0; i < rocks.size(); i++){
+    /*for(int i = 0; i < rocks.size(); i++){
       rocks.get(i).collide(timeStep*OBJECT_TIMESTEPS_PER_YEAR);
-    }
+    }*/
     maintainCreatureMinimum(false);
+    threadsToFinish = creatures.size();
     for(int i = 0; i < creatures.size(); i++){
       Creature me = creatures.get(i);
-      me.collide(timeStep*OBJECT_TIMESTEPS_PER_YEAR);
-      me.metabolize(timeStep*OBJECT_TIMESTEPS_PER_YEAR);
+      //me.doThread(timeStep, userControl);
+      me.collide(timeStep);
+      me.metabolize(timeStep);
+      me.useBrain(timeStep, !userControl);
       if(userControl){
         if(me == selectedCreature){
           if(keyPressed){
              if (key == CODED) {
-              if (keyCode == UP) me.accelerate(0.3,timeStep*OBJECT_TIMESTEPS_PER_YEAR);
-              if (keyCode == DOWN) me.accelerate(-0.3,timeStep*OBJECT_TIMESTEPS_PER_YEAR);
-              if (keyCode == LEFT) me.turn(-0.3,timeStep*OBJECT_TIMESTEPS_PER_YEAR);
-              if (keyCode == RIGHT) me.turn(0.3,timeStep*OBJECT_TIMESTEPS_PER_YEAR);
+              if (keyCode == UP) me.accelerate(0.04,timeStep*OBJECT_TIMESTEPS_PER_YEAR);
+              if (keyCode == DOWN) me.accelerate(-0.04,timeStep*OBJECT_TIMESTEPS_PER_YEAR);
+              if (keyCode == LEFT) me.turn(-0.1,timeStep*OBJECT_TIMESTEPS_PER_YEAR);
+              if (keyCode == RIGHT) me.turn(0.1,timeStep*OBJECT_TIMESTEPS_PER_YEAR);
             }else{
-              if(key == ' ') me.eat(0.3,timeStep*OBJECT_TIMESTEPS_PER_YEAR);
-              if(key == 'v') me.eat(-0.3,timeStep*OBJECT_TIMESTEPS_PER_YEAR);
-              if(key == 'f')  me.fight(0.3,timeStep*OBJECT_TIMESTEPS_PER_YEAR);
+              if(key == ' ') me.eat(0.1,timeStep*OBJECT_TIMESTEPS_PER_YEAR);
+              if(key == 'v') me.eat(-0.1,timeStep*OBJECT_TIMESTEPS_PER_YEAR);
+              if(key == 'f')  me.fight(0.5,timeStep*OBJECT_TIMESTEPS_PER_YEAR);
               if(key == 'u') me.setHue(me.hue+0.02);
               if(key == 'j') me.setHue(me.hue-0.02);
               
               if(key == 'i') me.setMouthHue(me.mouthHue+0.02);
               if(key == 'k') me.setMouthHue(me.mouthHue-0.02);
-              /*if(key == 'i') me.setSaturarion(me.saturation+0.05);
-              if(key == 'k') me.setSaturarion(me.saturation-0.05);
-              if(key == 'o') me.setBrightness(me.brightness+0.05);
-              if(key == 'l') me.setBrightness(me.brightness-0.05);
-              
-              
-              if(key == 'w') me.setVisionDistance(me.visionDistance+0.05);
-              if(key == 's') me.setVisionDistance(me.visionDistance-0.05);
-              if(key == 'a') me.setVisionAngle(me.visionAngle-0.05);
-              if(key == 'd') me.setVisionAngle(me.visionAngle+0.05);*/
               if(key == 'b'){
                 if(!wasPressingB){
                   me.reproduce(MANUAL_BIRTH_SIZE, timeStep);
@@ -378,13 +382,15 @@ class Board{
           }
         }
       }
-      me.useBrain(timeStep*OBJECT_TIMESTEPS_PER_YEAR, !userControl);
       if(me.getRadius() < MINIMUM_SURVIVABLE_SIZE){
         me.returnToEarth();
         creatures.remove(me);
         i--;
       }
     }
+    finishIterate(timeStep);
+  }
+  public void finishIterate(double timeStep){
     for(int i = 0; i < rocks.size(); i++){
       rocks.get(i).applyMotions(timeStep*OBJECT_TIMESTEPS_PER_YEAR);
     }
@@ -399,42 +405,48 @@ class Board{
       prepareForFileSave(3);
     }
   }
-  private float getGrowableTime(){
-    float temperatureRange = MAX_TEMPERATURE-MIN_TEMPERATURE;
-    return MIN_TEMPERATURE+temperatureRange*0.5-temperatureRange*0.5*cos((float)(getSeason()*2*PI));
+  private double getGrowthRate(double theTime){
+    double temperatureRange = MAX_TEMPERATURE-MIN_TEMPERATURE;
+    return MIN_TEMPERATURE+temperatureRange*0.5-temperatureRange*0.5*Math.cos(theTime*2*Math.PI);
+  }
+  private double getGrowthOverTimeRange(double startTime, double endTime){
+    double temperatureRange = MAX_TEMPERATURE-MIN_TEMPERATURE;
+    double m = MIN_TEMPERATURE+temperatureRange*0.5;
+    return (endTime-startTime)*m+(temperatureRange/Math.PI/4.0)*
+    (Math.sin(2*Math.PI*startTime)-Math.sin(2*Math.PI*endTime));
   }
   private double getSeason(){
     return (year%1.0);
   }
-  private void drawThermometer(float x1, float y1, float w, float h, float prog, float min, float max,
+  private void drawThermometer(float x1, float y1, float w, float h, double prog, double min, double max,
   color fillColor){
     noStroke();
     fill(0,0,0.2);
     rect(x1,y1,w,h);
     fill(fillColor);
-    float proportionFilled = (prog-min)/(max-min);
-    rect(x1,y1+h*(1-proportionFilled),w,proportionFilled*h);
+    double proportionFilled = (prog-min)/(max-min);
+    rect(x1,(float)(y1+h*(1-proportionFilled)),w,(float)(proportionFilled*h));
     
     
-    float zeroHeight = (0-min)/(max-min);
-    float zeroLineY = y1+h*(1-zeroHeight);
+    double zeroHeight = (0-min)/(max-min);
+    double zeroLineY = y1+h*(1-zeroHeight);
     textAlign(RIGHT);
     stroke(0,0,1);
     strokeWeight(3);
-    line(x1,zeroLineY,x1+w,zeroLineY);
-    float minY = y1+h*(1-(MIN_TEMPERATURE-min)/(max-min));
-    float maxY = y1+h*(1-(MAX_TEMPERATURE-min)/(max-min));
+    line(x1,(float)(zeroLineY),x1+w,(float)(zeroLineY));
+    double minY = y1+h*(1-(MIN_TEMPERATURE-min)/(max-min));
+    double maxY = y1+h*(1-(MAX_TEMPERATURE-min)/(max-min));
     fill(0,0,0.8);
-    line(x1,minY,x1+w*1.8,minY);
-    line(x1,maxY,x1+w*1.8,maxY);
-    line(x1+w*1.8,minY,x1+w*1.8,maxY);
+    line(x1,(float)(minY),x1+w*1.8,(float)(minY));
+    line(x1,(float)(maxY),x1+w*1.8,(float)(maxY));
+    line(x1+w*1.8,(float)(minY),x1+w*1.8,(float)(maxY));
     
     fill(0,0,1);
-    text("Zero",x1-5,zeroLineY+8);
-    text(nf(MIN_TEMPERATURE,0,2),x1-5,minY+8);
-    text(nf(MAX_TEMPERATURE,0,2),x1-5,maxY+8);
+    text("Zero",x1-5,(float)(zeroLineY+8));
+    text(nf(MIN_TEMPERATURE,0,2),x1-5,(float)(minY+8));
+    text(nf(MAX_TEMPERATURE,0,2),x1-5,(float)(maxY+8));
   }
-  private void drawVerticalSlider(float x1, float y1, float w, float h, float prog, color fillColor, color antiColor){
+  private void drawVerticalSlider(float x1, float y1, float w, float h, double prog, color fillColor, color antiColor){
     noStroke();
     fill(0,0,0.2);
     rect(x1,y1,w,h);
@@ -443,7 +455,7 @@ class Board{
     }else{
       fill(antiColor);
     }
-    rect(x1,y1+h*(1-prog),w,prog*h);
+    rect(x1,(float)(y1+h*(1-prog)),w,(float)(prog*h));
   }
   private boolean setMinTemperature(float temp){
     MIN_TEMPERATURE = tempBounds(THERMOMETER_MIN+temp*(THERMOMETER_MAX-THERMOMETER_MIN));
@@ -525,7 +537,7 @@ class Board{
       }
     }
   }
-  public String[] toBigString(){
+  public String[] toBigString(){ // Convert current evolvio board into string. Does not work
     String[] placeholder = {"Goo goo","Ga ga"};
     return placeholder;
   }

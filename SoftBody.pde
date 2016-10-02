@@ -4,15 +4,15 @@ class SoftBody{
   double vx;
   double vy;
   double energy;
-  final float ENERGY_DENSITY = 1.0/(0.2*0.2*PI); //set so when a creature is of minimum size, it equals one.
+  float ENERGY_DENSITY; //set so when a creature is of minimum size, it equals one.
   double density;
   double hue;
   double saturation;
   double brightness;
   double birthTime;
   boolean isCreature = false;
-  final float FRICTION = 0.03;
-  final float COLLISION_FORCE = 0.1;
+  final float FRICTION = 0.004;
+  final float COLLISION_FORCE = 0.01;
   final float FIGHT_RANGE = 2.0;
   double fightLevel = 0;
   
@@ -41,6 +41,7 @@ class SoftBody{
     setSBIP(false);
     setSBIP(false); // just to set previous SBIPs as well.
     birthTime = bt;
+    ENERGY_DENSITY = 1.0/(tb.MINIMUM_SURVIVABLE_SIZE*tb.MINIMUM_SURVIVABLE_SIZE*PI);
   }
   public void setSBIP(boolean shouldRemove){
     double radius = getRadius()*FIGHT_RANGE;
@@ -115,14 +116,14 @@ class SoftBody{
   public void applyMotions(double timeStep){
     px = xBodyBound(px+vx*timeStep);
     py = yBodyBound(py+vy*timeStep);
-    vx *= (1-FRICTION/getMass());
-    vy *= (1-FRICTION/getMass());
+    vx *= Math.max(0,1-FRICTION/getMass());
+    vy *= Math.max(0,1-FRICTION/getMass());
     setSBIP(true);
   }
   public void drawSoftBody(float scaleUp){
     double radius = getRadius();
     stroke(0);
-    strokeWeight(2);
+    strokeWeight(board.CREATURE_STROKE_WEIGHT);
     fill((float)hue, (float)saturation, (float)brightness);
     ellipseMode(RADIUS);
     ellipse((float)(px*scaleUp),(float)(py*scaleUp),(float)(radius*scaleUp),(float)(radius*scaleUp));
